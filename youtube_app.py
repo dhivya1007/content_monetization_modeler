@@ -17,34 +17,30 @@ except Exception as e:
     st.stop()
 
 # ---------------- LOAD DATA ----------------
-df = pd.read_csv(r"C:\Users\haris\.vscode\youtube analysis\youtube_ad_revenue_dataset.csv")
+df = pd.read_csv(r"C:\Users\haris\.vscode\youtube analysis\cleaned_youtube_ad_revenue_dataset.csv")
 
 # ---------------- SIDEBAR FILTERS ----------------
 st.sidebar.header("🔍 Filters")
 
-category_filter = st.sidebar.multiselect(
-    "Category",
-    df["category"].unique(),
-    default=df["category"].unique()
-)
+category_options = ["All"] + sorted(df["category"].dropna().unique())
+category_filter = st.sidebar.selectbox("Category", category_options)
 
-device_filter = st.sidebar.multiselect(
-    "Device",
-    df["device"].unique(),
-    default=df["device"].unique()
-)
+device_options = ["All"] + sorted(df["device"].dropna().unique())
+device_filter = st.sidebar.selectbox("Device", device_options)
 
-country_filter = st.sidebar.multiselect(
-    "Country",
-    df["country"].unique(),
-    default=df["country"].unique()
-)
+country_options = ["All"] + sorted(df["country"].dropna().unique())
+country_filter = st.sidebar.selectbox("Country", country_options)
 
-filtered_df = df[
-    (df["category"].isin(category_filter)) &
-    (df["device"].isin(device_filter)) &
-    (df["country"].isin(country_filter))
-]
+filtered_df = df.copy()
+
+if category_filter != "All":
+    filtered_df = filtered_df[filtered_df["category"] == category_filter]
+
+if device_filter != "All":
+    filtered_df = filtered_df[filtered_df["device"] == device_filter]
+
+if country_filter != "All":
+    filtered_df = filtered_df[filtered_df["country"] == country_filter]
 
 # ---------------- KPI METRICS ----------------
 st.subheader("📌 Key Performance Indicators")
@@ -59,6 +55,7 @@ col4.metric("Total Videos", f"{len(filtered_df):,}")
 # ---------------- CATEGORY ANALYSIS ----------------
 st.subheader("📊 Category Performance")
 
+# ---------------- AGGREGATION ----------------
 cat_stats = filtered_df.groupby("category").agg({
     "views": "sum",
     "likes": "sum",
@@ -66,32 +63,54 @@ cat_stats = filtered_df.groupby("category").agg({
     "ad_revenue_usd": "sum"
 }).reset_index()
 
-cat_stats["engagement"] = (cat_stats["likes"] + cat_stats["comments"]) / cat_stats["views"]
+# Avoid division by zero
+cat_stats["engagement"] = (
+    (cat_stats["likes"] + cat_stats["comments"]) /
+    cat_stats["views"].replace(0, 1)
+)
 
-# Revenue Chart
+# ---------------- SORTING ----------------
+cat_revenue = filtered_df.groupby("category")["ad_revenue_usd"].sum()
+# ---------------- REVENUE CHART ----------------
+st.subheader("🥧 Revenue Share by Category")
+
 fig, ax = plt.subplots()
-ax.bar(cat_stats["category"], cat_stats["ad_revenue_usd"])
-plt.xticks(rotation=45)
-ax.set_ylabel("Revenue")
+
+ax.pie(
+    cat_revenue,
+    labels=cat_revenue.index,
+    autopct='%1.1f%%'
+)
+
+ax.set_title("Revenue Distribution by Category")
+
 st.pyplot(fig)
 
-# Engagement Chart
+# ---------------- ENGAGEMENT CHART ----------------
 st.subheader("🔥 Engagement by Category")
 
+engagement_sorted = cat_stats.sort_values(by="engagement", ascending=False)
+
 fig, ax = plt.subplots()
-ax.bar(cat_stats["category"], cat_stats["engagement"])
-plt.xticks(rotation=45)
+
+ax.barh(engagement_sorted["category"], engagement_sorted["engagement"])
+ax.set_xlabel("Engagement Rate")
+ax.set_title("Top Categories by Engagement")
+
 st.pyplot(fig)
 
 # ---------------- REVENUE DISTRIBUTION ----------------
 st.subheader("💰 Revenue Distribution")
 
 fig, ax = plt.subplots()
+
 ax.hist(filtered_df["ad_revenue_usd"], bins=30)
+
 ax.set_xlabel("Revenue")
 ax.set_ylabel("Frequency")
-st.pyplot(fig)
+ax.set_title("Revenue Distribution")
 
+st.pyplot(fig)
 # ---------------- PREDICTION SECTION ----------------
 st.subheader("🚀 Predict Ad Revenue")
 
